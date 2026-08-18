@@ -1,0 +1,13 @@
+# dsh-vision-edge-doubao bundle patch: insert one row over the profile tree.
+# 纯 host 插件：注册 vision 工具 + 本机队列服务（:9340）。
+# 识图走豆包 Web 通道：Edge 调试实例(9333) + bridge-edge.mjs 轮询队列驱动豆包。
+- insert:
+    - id: vision-edge-doubao
+      name: 'dsh-vision-edge-doubao'
+      config:
+        defaultChannel: web
+        webChannel:
+          enabled: true
+          queuePort: 9340
+          timeoutMs: 240000
+        cacheMax: 64
