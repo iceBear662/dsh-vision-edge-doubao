@@ -1,6 +1,6 @@
 {
   "name": "dsh-vision-edge-doubao",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "DSH 视觉插件（Edge 豆包桥接）：通用识图 + 数学建模图专项（几何图形/流程图/图表/表格/公式）+ 不确定项澄清闭环。零成本，免 API Key。",
   "main": "lib/index.js",
