@@ -111,6 +111,32 @@ powershell -ExecutionPolicy Bypass -File <插件目录>\start-vision-edge.ps1
 
 ---
 
+## 致谢
+
+本项目借鉴了 [dsh-vision](https://github.com/54xkeee/dsh-vision)（作者 54xkeee，MIT License）的架构与豆包桥接方案，在其基础上：
+
+- 桥接改为 **Edge** 浏览器（原为 Chrome）
+- 修复豆包网页改版后的输入框定位、回复提取、长文本发送等兼容问题
+- 提示词重构为**回答优先 + 数学建模图专项**，新增不确定项澄清闭环
+
+原项目 MIT License 版权声明：
+
+> MIT License
+>
+> Copyright (c) 2026 54xkeee
+>
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all
+> copies or substantial portions of the Software.
+
+---
+
 ## 许可证
 
 [MIT](./LICENSE)
