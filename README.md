@@ -135,7 +135,6 @@ powershell -ExecutionPolicy Bypass -File <插件目录>\start-vision-edge.ps1
 - 🔧 修复专家模式适配：
   - 模式切换按钮贴视口边缘导致自动化点击失效 → 滚动到视口中央 + 真实鼠标点击
   - 专家模式先输出思考块再输出回答 → 生成中检测跳过思考草稿，只取最终回答
-- 📚 README 重写为用户导向（安装优先）、增加致谢（借鉴 dsh-vision，保留 MIT 版权声明）与封号风险提示
 
 ---
 
