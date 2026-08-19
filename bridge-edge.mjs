@@ -10,6 +10,8 @@ const CDP = process.env.CDP_URL || "http://127.0.0.1:9333";
 const QUEUE = process.env.QUEUE_URL || "http://localhost:9340";
 const POLL_MS = 2000;
 const REPLY_TIMEOUT_MS = 240000;
+// 豆包回答模式：expert（专家，默认，更精准）| quick（快速）
+const DOUBAO_MODE = process.env.DOUBAO_MODE || "expert";
 
 let browser = null;
 
@@ -89,6 +91,59 @@ async function scrollToBottom(page) {
 		const sc2 = document.querySelector('[class*="scroller"]');
 		if (sc2) sc2.scrollTop = sc2.scrollHeight;
 	});
+}
+
+/** 确保豆包处于指定回答模式（expert 专家 / quick 快速）。
+ * 模式切换入口：输入框上方按钮栏的 mode-select 下拉（Radix menu）。
+ * 流程：先按 Esc 收起可能打开的菜单 → 读当前模式 → 非目标模式则
+ * 打开菜单点目标项。任何失败都静默返回（不阻塞识图任务）。 */
+async function ensureDoubaoMode(page) {
+	if (!DOUBAO_MODE) return;
+	const target = DOUBAO_MODE === "quick" ? "快速" : "专家";
+	try {
+		// 收起可能打开的菜单（Esc + 点击页面空白处）
+		await page.keyboard.press("Escape").catch(() => {});
+		await new Promise((r) => setTimeout(r, 400));
+		await page.evaluate(() => document.body.click()).catch(() => {});
+		await new Promise((r) => setTimeout(r, 400));
+
+		const current = await page.evaluate(() => {
+			const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
+			return el ? (el.innerText || "").trim().split("\n")[0].trim() : "";
+		});
+		if (current === target) {
+			console.log(`[bridge] 豆包模式已是「${target}」，无需切换`);
+			return;
+		}
+
+		// 打开模式菜单
+		const opened = await page.evaluate(() => {
+			const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
+			if (!el) return false;
+			el.click();
+			return true;
+		});
+		if (!opened) return;
+		await new Promise((r) => setTimeout(r, 1500));
+
+		// 按 aria-labelledby 定位菜单并点击目标模式
+		const result = await page.evaluate((tgt) => {
+			const tid = document.querySelector('[data-valid-btn="mode-select-action-btn"]')
+				?.closest("[aria-haspopup]")?.id;
+			if (!tid) return "no-trigger";
+			const content = document.querySelector('[data-radix-menu-content][aria-labelledby="' + tid + '"]');
+			if (!content) return "no-menu";
+			const items = [...content.querySelectorAll('[role="menuitem"]')];
+			const item = items.find((b) => (b.innerText || "").trim() === tgt);
+			if (!item) return "no-item: " + items.map((i) => (i.innerText || "").trim()).join(",");
+			item.click();
+			return "clicked";
+		}, target);
+		console.log(`[bridge] 豆包模式切换（${current} → ${target}）: ${result}`);
+		await new Promise((r) => setTimeout(r, 2000));
+	} catch (e) {
+		console.log(`[bridge] 豆包模式切换失败（忽略，继续任务）: ${String(e?.message || e).slice(0, 120)}`);
+	}
 }
 
 /** 消息列表最后一个非空行文本（虚拟滚动下 = 最新渲染的消息行）。
@@ -177,6 +232,8 @@ async function handleJob(job) {
 		filePaths.push(p);
 	}
 	try {
+		// 发送前确保豆包处于目标回答模式（专家/快速）
+		await ensureDoubaoMode(page);
 		// 发送前最后一行（用于判断新消息是否渲染出现）
 		const beforeLast = await lastMessageText(page);
 		for (const p of filePaths) await uploadImage(page, p);

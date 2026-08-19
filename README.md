@@ -98,6 +98,14 @@ powershell -ExecutionPolicy Bypass -File <插件目录>\start-vision-edge.ps1
 - `mode`：`glance`（通用）/ `ocr`（文字转录）/ `region`（区域细查）/ `compare`（多图对比）/ `math`（数学建模专项）
 - `detail`：`auto`（自动）/ `fast` / `standard` / `deep`（auto 会自动升级复杂图）
 
+### 豆包回答模式（专家模式）
+
+插件会自动确保豆包使用**专家模式**识图（更精准），并输出"已完成思考"标志：
+
+- 豆包模式是**持久设置**：切换一次后长期保持；插件每次识图前会自动检查并确保处于专家模式（幂等，无需手动干预）
+- 想用快速模式：启动桥接前设置环境变量 `DOUBAO_MODE=quick`
+- 自动切换遇到异常时会**静默降级**（继续用当前模式识图，不影响任务）
+
 ---
 
 ## 常见问题
