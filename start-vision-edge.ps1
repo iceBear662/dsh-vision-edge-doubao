@@ -1,4 +1,4 @@
-# dsh-vision-edge-doubao 一键启动脚本（Edge 调试实例 + 豆包桥接）
+﻿# dsh-vision-edge-doubao 一键启动脚本（Edge 调试实例 + 豆包桥接）
 # 用法：双击运行，或 powershell -ExecutionPolicy Bypass -File start-vision-edge.ps1
 # 首次运行会在弹出的 Edge 窗口中登录豆包（登录态保存在独立 profile，之后不用再登）
 
