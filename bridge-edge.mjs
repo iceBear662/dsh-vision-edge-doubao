@@ -95,36 +95,66 @@ async function scrollToBottom(page) {
 
 /** 确保豆包处于指定回答模式（expert 专家 / quick 快速）。
  * 模式切换入口：输入框上方按钮栏的 mode-select 下拉（Radix menu）。
- * 流程：先按 Esc 收起可能打开的菜单 → 读当前模式 → 非目标模式则
- * 打开菜单点目标项。任何失败都静默返回（不阻塞识图任务）。 */
+ * 流程：读当前模式 → 非目标模式则滚动按钮到视口中央 + 真实鼠标点击
+ * 打开菜单（evaluate click 在按钮贴视口边缘时可能无效，实测踩过）→
+ * 轮询等菜单出现 → 点目标项。任何失败都静默返回（不阻塞识图任务）。 */
 async function ensureDoubaoMode(page) {
 	if (!DOUBAO_MODE) return;
 	const target = DOUBAO_MODE === "quick" ? "快速" : "专家";
 	try {
-		// 收起可能打开的菜单（Esc + 点击页面空白处）
-		await page.keyboard.press("Escape").catch(() => {});
-		await new Promise((r) => setTimeout(r, 400));
-		await page.evaluate(() => document.body.click()).catch(() => {});
-		await new Promise((r) => setTimeout(r, 400));
-
 		const current = await page.evaluate(() => {
 			const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
 			return el ? (el.innerText || "").trim().split("\n")[0].trim() : "";
 		});
+		if (!current) return;
 		if (current === target) {
 			console.log(`[bridge] 豆包模式已是「${target}」，无需切换`);
 			return;
 		}
 
-		// 打开模式菜单
-		const opened = await page.evaluate(() => {
+		// 滚动按钮到视口中央（按钮贴页面底部边缘时点击会失效）
+		await page.evaluate(() => {
 			const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
-			if (!el) return false;
-			el.click();
-			return true;
+			if (el) el.scrollIntoView({ block: "center", inline: "center" });
 		});
-		if (!opened) return;
-		await new Promise((r) => setTimeout(r, 1500));
+		await new Promise((r) => setTimeout(r, 800));
+
+		// 真实鼠标点击打开菜单（优先），失败再退 evaluate click
+		const btn = await page.$('[data-valid-btn="mode-select-action-btn"]');
+		let openedByMouse = false;
+		if (btn) {
+			const box = await btn.boundingBox();
+			if (box) {
+				await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+				openedByMouse = true;
+			}
+		}
+		// 轮询等菜单打开
+		let menuOpened = false;
+		for (let i = 0; i < 6; i++) {
+			await new Promise((r) => setTimeout(r, 500));
+			menuOpened = await page.evaluate(() => {
+				const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
+				const parent = el ? el.closest('[aria-expanded]') : null;
+				return parent ? parent.getAttribute("data-state") === "open" : false;
+			});
+			if (menuOpened) break;
+		}
+		if (!menuOpened && !openedByMouse) {
+			await page.evaluate(() => {
+				document.querySelector('[data-valid-btn="mode-select-action-btn"]')?.click();
+			});
+			await new Promise((r) => setTimeout(r, 1500));
+			menuOpened = await page.evaluate(() => {
+				const el = document.querySelector('[data-valid-btn="mode-select-action-btn"]');
+				const parent = el ? el.closest('[aria-expanded]') : null;
+				return parent ? parent.getAttribute("data-state") === "open" : false;
+			});
+		}
+		if (!menuOpened) {
+			console.log(`[bridge] 豆包模式切换（${current} → ${target}）: 菜单未打开，跳过`);
+			return;
+		}
 
 		// 按 aria-labelledby 定位菜单并点击目标模式
 		const result = await page.evaluate((tgt) => {
@@ -166,9 +196,12 @@ async function lastMessageText(page) {
  * 阶段 1（等新消息）：最后一行文本必须 != 发送前最后一行（beforeLast），
  * 确保新消息/新回复已渲染出来——否则会把上一任务的旧回复误当本次回复（实测踩过）。
  * 阶段 2（等稳定）：新内容连续两次相同即视为回复稳定，返回该文本。
- * 关键：任务提示词本身（用户消息）含「你是视觉识别专家」/「用户要求：」特征，
- * 若最后一行是用户消息（豆包尚未回复），跳过稳定计数，继续等待——否则会把
- * 用户消息误当回复返回（实测：豆包专家模式思考慢时踩过）。
+ * 关键 1：任务提示词本身（用户消息）含「你是视觉识别专家」/「用户要求：」特征，
+ * 若最后一行是用户消息（豆包尚未回复），跳过稳定计数，继续等待。
+ * 关键 2（专家模式）：豆包专家模式先输出「思考块」再输出最终回答；思考块
+ * 稳定后最终回答可能延迟 10-30 秒才渲染。通过「生成中指示」（停止按钮/
+ * 思考中字样）判断是否仍在生成——生成中则重置稳定计数继续等待，
+ * 避免把思考草稿当最终回答返回（实测踩过）。
  */
 async function waitReply(page, beforeLast) {
 	const startedAt = Date.now();
@@ -176,6 +209,14 @@ async function waitReply(page, beforeLast) {
 	let lastText = "";
 	let stableCount = 0;
 	const isUserMessage = (t) => t.includes("你是视觉识别专家") || t.includes("用户要求：");
+	const isGenerating = async () => await page.evaluate(() => {
+		// 停止/生成中按钮
+		const stop = [...document.querySelectorAll("button")].find((b) =>
+			/停止|stop/i.test((b.innerText || "") + (b.getAttribute("aria-label") || "")));
+		if (stop) return true;
+		// 思考中/生成中提示
+		return /思考中|生成中|正在思考/.test((document.body.innerText || "").slice(-500));
+	});
 	while (Date.now() - startedAt < REPLY_TIMEOUT_MS) {
 		await scrollToBottom(page);
 		await new Promise((r) => setTimeout(r, 2500));
@@ -185,6 +226,12 @@ async function waitReply(page, beforeLast) {
 			// 最后一行仍是用户消息（任务 prompt），豆包还没开始回复——继续等
 			lastText = text;
 			stableCount = 0;
+			continue;
+		}
+		if (await isGenerating()) {
+			// 豆包仍在思考/生成（专家模式思考块稳定不代表完成）——重置稳定计数
+			stableCount = 0;
+			lastText = text;
 			continue;
 		}
 		if (phase === "waitNew") {
