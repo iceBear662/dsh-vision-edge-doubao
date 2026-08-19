@@ -22,7 +22,7 @@ DSH（DeepSeek Harness）视觉插件：通过 **Edge + 豆包网页版** 给纯
 
 ## 环境要求
 
-- Windows（需要 Edge 或 Chrome 浏览器）
+- Windows（需要 Edge浏览器）
 - 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）Web GUI
 - Node.js ≥ 18（桥接组件需要）
 
