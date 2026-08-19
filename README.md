@@ -1,139 +1,109 @@
 # dsh-vision-edge-doubao
 
-DSH（DeepSeek Harness）视觉插件：通过 **Edge + 豆包网页版** 给纯文本 DeepSeek 模型提供识图能力。
+> 纯文本 DeepSeek，终于找到眼睛捐赠者了——豆包！👀
 
-- **零成本**：复用浏览器登录态，无需 API Key
-- **数学建模图专项**（`mode=math`）：几何图形 / 流程图 / 数据图表 / 表格 / 公式 的深度结构化识别
-- **澄清闭环**：识别出不确定项时输出 `clarify` 问题，模型可向用户提问后带补充信息重识别
-- **通用识图**：`mode=glance|ocr|region|compare`，`detail=auto|fast|standard|deep`
+DeepSeek Harness（DSH）视觉插件：通过 **Edge 浏览器 + 豆包网页版** 给纯文本模型提供识图能力。**零成本、免 API Key**——DeepSeek 负责思考，豆包负责看。
 
----
-
-## 架构
-
-```
-vision 工具（DSH 插件 host）
-   │  队列 :9340（submit/pending/result/job/cancel）
-   ▼
-bridge-edge.mjs（Windows 桥接，轮询队列）
-   │  CDP（:9333）
-   ▼
-Edge 调试实例（独立 profile ~/.vision-edge-profile，豆包登录态持久保存）
-   │
-   ▼
-豆包网页版识图 → 回复文本回传
-```
-
-| 组件 | 说明 |
-|---|---|
-| `lib/index.js` | 插件 host：vision 工具注册、附件/本地图读取、缓存、evidence 记录 |
-| `lib/prompt.js` | 提示词构造（v4）+ 回复解析（fallback/JSON/clarify 提取） |
-| `lib/queue.js` | 本地队列服务（懒启动，首次识图才监听 :9340） |
-| `bridge-edge.mjs` | Edge 桥接：发图 → 输入提示词 → 发送 → 提取回复 |
-| `start-vision-edge.ps1` | 一键启动（Edge 调试实例 + 桥接 + 验证） |
+- 🧮 **数学建模图专项**：几何图形 / 流程图 / 数据图表 / 表格 / 公式 的深度结构化识别
+- 💬 **澄清闭环**：识别有不确定项时，插件会列出问题问你，你回答后重新识别更精确
+- 🖼 **通用识图**：照片、截图、OCR 文字识别、区域细查、多图对比
+- 🔁 **免维护登录**：豆包登录态保存在独立浏览器配置里，一次登录长期使用
 
 ---
 
-## 快速开始
+## 环境要求
+
+- Windows（需要 Edge 或 Chrome 浏览器）
+- 已安装 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）Web GUI
+- Node.js ≥ 18（桥接组件需要）
+
+---
+
+## 安装
+
+### 方式一：从 GitHub 安装（推荐）
+
+```sh
+dsh plugin --profile web add github:iceBear662/dsh-vision-edge-doubao
+```
+
+### 方式二：从 npm 安装
+
+```sh
+dsh plugin --profile web add dsh-vision-edge-doubao
+```
+
+### 方式三：tarball 安装
+
+```sh
+dsh plugin --profile web add ./dsh-vision-edge-doubao-0.1.0.tgz
+```
+
+> 安装后重启 `dsh web` 生效（插件在启动时加载）。
+
+---
+
+## 首次使用配置（只需一次）
+
+插件本身装好后，还需要让桥接跑起来：
+
+### 1. 运行一键启动脚本
 
 ```powershell
-# 1. 启动环境（Edge 调试实例 + 桥接，幂等可重复执行）
-powershell -ExecutionPolicy Bypass -File C:\Users\icebe\dsh-vision-edge-doubao\start-vision-edge.ps1
-
-# 2. 首次使用时在弹窗的 Edge 窗口登录一次豆包（登录态保存在独立 profile，之后不用再登）
-
-# 3. 重启 dsh web 使插件加载（若尚未加载）
-#    终端 Ctrl+C → npx @deepseek-ai/dsh web → 刷新页面
+powershell -ExecutionPolicy Bypass -File <插件目录>\start-vision-edge.ps1
 ```
 
-插件加载后，模型会话中自动出现 `vision` 工具（无需手动安装）。
+脚本会自动完成：启动 Edge 调试实例（独立配置，不影响你日常浏览器）→ 启动豆包桥接 → 验证环境。
+
+> GitHub/npm 安装后脚本在 `node_modules\dsh-vision-edge-doubao\start-vision-edge.ps1`。
+
+### 2. 登录豆包（仅首次）
+
+在弹出的 Edge 窗口里打开 [doubao.com](https://www.doubao.com)，扫码或手机号登录一次。
+登录态保存在独立配置中，之后重启电脑也不用再登。
+
+### 3. 开始使用
+
+在 DSH 会话里直接发图片给模型，或说"看看这张图"即可——模型会自动调用 vision 工具。
 
 ---
 
-## 用法
+## 使用说明
 
-### 模型侧（DSH 会话内）
-模型看到图片附件时自动调用 vision 工具；用户也可直接要求"看图/识别图片"。
+### 数学建模图专项（`mode=math`）
 
-### 关键参数
-| 参数 | 取值 | 说明 |
-|---|---|---|
-| `mode` | `glance` / `ocr` / `region` / `compare` / `math` | math=数学建模图专项（几何/流程图/图表/表格/公式） |
-| `detail` | `auto` / `fast` / `standard` / `deep` | auto 自动升级：识别为复杂图时自动用 deep 再查一遍 |
-| `channel` | `auto` / `web` | 固定豆包 Web 通道 |
-| `prompt` | 用户原话 | 完整传入；可附带用户补充信息（澄清闭环） |
+对数学建模竞赛常见的图做了专项优化，识别时会按图型输出结构化要点：
 
-### clarify 澄清闭环
-1. 豆包识别后输出「需要向用户确认的问题」（最多 3 个，仅影响结论的关键不确定点）
-2. 插件提取为工具返回的 `clarify` 字段
-3. 模型看到非空 `clarify` → 用 `ask_user_question` 向用户提问
-4. 用户回答 → 模型把补充信息带进新 prompt 重新调 vision → 精确识别
-
----
-
-## 常见问题与排查（实测经验）
-
-> 💡 **队列 :9340 未监听是正常现象**：队列是懒启动设计（首次识图任务才监听）。
-> 启动脚本里"队列不可达"的提示在空闲状态下会误报，不影响使用；只要识图时能工作就正常。
-
-### 1. 识别超时 / 返回错误内容
-- **Edge 被关闭或重启过**：页面回到 `/chat/`（无会话 ID），旧桥接连不上 → 重新运行 `start-vision-edge.ps1`（自动拉起 Edge 调试实例与桥接）
-- **豆包人机验证**：偶发拦截，等待后重试即可（非插件问题）
-- **桥接日志不可见**：脚本启动的桥接日志在隐藏窗口。排查时用前台方式：
-  ```powershell
-  cd C:\Users\icebe\dsh-vision-edge-doubao
-  node bridge-edge.mjs   # 前台运行，日志可见；另开终端操作
-  ```
-
-### 2. 回复提取的原理与注意事项（虚拟滚动）
-- 豆包消息列表是**虚拟滚动**：只渲染视口附近行，必须**滚动到底部**才能看到新消息/回复（桥接已自动处理）
-- 提取策略：发送前记录最后一行 → 等新内容出现（≠发送前）→ 等稳定（连续 2 次相同）→ 返回
-- 用户消息（任务提示词）特征：「你是视觉识别专家」/「用户要求：」——桥接会跳过，避免把用户消息当回复
-
-### 3. 缓存说明
-- 相同图片 + 相同 prompt + 相同参数命中缓存（会话持久缓存 + 内存 LRU）
-- 需要重测时**换一个提问方式**即可绕过缓存
-- 修改提示词后请**递增 `lib/prompt.js` 的 `VISION_PROMPT_VERSION`**（缓存键组成部分），并**重启 dsh web**（插件 host 的 ESM 模块缓存）
-
-### 4. 豆包输出格式相关的防御（已内建）
-| 问题 | 处理 |
+| 图型 | 识别内容 |
 |---|---|
-| markdown 表格渲染丢失内容 | 提示词强制"不要使用表格，用列表"（v3+） |
-| 回复被拆成多个 DOM 分段/字符碎片换行 | 提取时合并碎片再解析 |
-| 豆包先写"无"再列澄清问题 | 提取时剔除"无"前缀 |
-| 长回复流式未完成 | 稳定判断（连续 2 次相同） |
+| 几何图形 | 形状、顶点字母及方位、实线/虚线分类、辅助线、角度标记、坐标系 |
+| 流程图 | 节点类型与文字、分支条件、循环结构、层级关系 |
+| 数据图表 | 图表类型、坐标轴/刻度、趋势与极值、关键数值、图例 |
+| 表格 | 行列结构、表头、全部数值、异常值 |
+| 公式 | LaTeX 转录（分数/根号/上下标/求和等） |
 
-### 5. 修改代码后生效
-- `lib/*.js`（host 侧）：**重启 dsh web** 生效
-- `bridge-edge.mjs`：**重启桥接**生效（kill 进程后重跑）
-- 语法检查：`node --check <file>`
+### 澄清闭环（不确定项提问）
 
-### 6. 卸载
-```powershell
-dsh plugin --profile web remove dsh-vision-edge-doubao
-```
+识别遇到看不清或影响结论的点时，插件会在结果中返回 `clarify` 问题，模型会主动问你（如"点 D 是否为 BC 的中点？"），你回答后它会带着补充信息重新识别，得到更精确的结果。
 
----
+### 参数速查
 
-## 文件地图
-
-```
-dsh-vision-edge-doubao/
-├── lib/
-│   ├── index.js      # host：工具注册、缓存、evidence
-│   ├── prompt.js     # 提示词 v4、回复解析、clarify 提取
-│   └── queue.js      # 队列 :9340（懒启动）
-├── bridge-edge.mjs   # Edge 桥接
-├── start-vision-edge.ps1  # 一键启动
-├── cordis.patch.yml  # DSH bundle 注册（id: vision-edge-doubao）
-└── package.json      # 插件清单（main: lib/index.js）
-```
+- `mode`：`glance`（通用）/ `ocr`（文字转录）/ `region`（区域细查）/ `compare`（多图对比）/ `math`（数学建模专项）
+- `detail`：`auto`（自动）/ `fast` / `standard` / `deep`（auto 会自动升级复杂图）
 
 ---
 
-## 版本历史
+## 常见问题
 
-| 版本 | 变更 |
+| 问题 | 解决 |
 |---|---|
-| v0.1.0 | 首个可用版本：Edge 桥接 + math 专项 + clarify 闭环 |
-| 提示词 v4 | 澄清节（需要向用户确认的问题）、禁表格、回答优先 |
+| 识别超时 | 多半是 Edge 被关闭过：重新运行 `start-vision-edge.ps1` 即可恢复 |
+| 偶发失败 | 豆包偶发人机验证，稍等重试即可 |
+| 相同图片返回相同结果 | 插件有缓存（省流量），换一种问法即可重新识别 |
+| 想重装/卸载 | `dsh plugin --profile web remove dsh-vision-edge-doubao` |
+
+---
+
+## 许可证
+
+[MIT](./LICENSE)
