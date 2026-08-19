@@ -53,9 +53,18 @@ if ($bridgeProc) {
     Write-Host "启动桥接 (node bridge-edge.mjs) ..."
     # 安装 puppeteer-core（若缺）
     if (-not (Test-Path (Join-Path $pluginDir "node_modules\puppeteer-core"))) {
-        Write-Host "安装 puppeteer-core 依赖..."
+        Write-Host "安装 puppeteer-core 依赖（需要网络）..."
         Push-Location $pluginDir
-        npm install puppeteer-core --no-audit --no-fund | Out-Null
+        try {
+            npm install puppeteer-core --no-audit --no-fund | Out-Null
+            if (-not (Test-Path (Join-Path $pluginDir "node_modules\puppeteer-core"))) { throw "安装失败" }
+            Write-Host "puppeteer-core 安装完成 ✅"
+        } catch {
+            Write-Host "❌ puppeteer-core 安装失败：请检查网络后重新运行本脚本"
+            Write-Host "   或手动执行：cd $pluginDir && npm install puppeteer-core"
+            Pop-Location
+            exit 1
+        }
         Pop-Location
     }
     Start-Process node -ArgumentList "bridge-edge.mjs" -WorkingDirectory $pluginDir -WindowStyle Hidden

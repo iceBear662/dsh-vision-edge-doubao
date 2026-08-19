@@ -266,9 +266,10 @@ async function handleJob(job) {
 	} catch { /* 队列暂不可达：继续处理，避免任务卡死 */ }
 	const page = await getDoubaoPage();
 	await page.bringToFront();
-	// 图片写入 Windows 可见临时目录
+	// 图片写入 Windows 可见临时目录（确保目录存在，用户可能没跑 start 脚本）
 	const fs = await import("node:fs");
 	const path = await import("node:path");
+	fs.mkdirSync("C:\\Temp\\doubao-bridge", { recursive: true });
 	const stamp = `${job.id}-${job.images.length}`;
 	const filePaths = [];
 	for (let i = 0; i < job.images.length; i++) {
